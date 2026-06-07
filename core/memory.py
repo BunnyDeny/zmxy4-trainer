@@ -296,18 +296,23 @@ class MemoryScanner:
             if not result:
                 break
 
+            # Python 3.14+ ctypes 将空指针转为 None，需要转回 0
+            base_addr = mbi.BaseAddress or 0
+            region_size = mbi.RegionSize or 0
+
             # 只扫描已提交、可读的内存（跳过 PAGE_NOACCESS）
             if (mbi.State == MEM_COMMIT
                     and mbi.Protect != PAGE_NOACCESS
-                    and not (mbi.Protect & 0x100)):  # 跳过 PAGE_GUARD
+                    and not (mbi.Protect & 0x100)
+                    and region_size > 0):  # 跳过 PAGE_GUARD
                 class _MemRegion:
-                    lpBaseOfDll = mbi.BaseAddress
-                    SizeOfImage = mbi.RegionSize
+                    lpBaseOfDll = base_addr
+                    SizeOfImage = region_size
 
                 yield _MemRegion()
 
-            addr = mbi.BaseAddress + mbi.RegionSize
-            if addr > 0x7FFFFFFF:  # 32位进程上限
+            addr = base_addr + region_size
+            if addr <= 0 or addr > 0x7FFFFFFF:  # 防止溢出 + 32位上限
                 break
 
     @staticmethod
