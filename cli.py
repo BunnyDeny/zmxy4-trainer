@@ -31,6 +31,7 @@ def print_help():
     print("  scan -n <hp|mp|atk> <数值>   强制再次扫描")
     print("  enable <功能>      开启功能")
     print("  disable <功能>     关闭功能")
+    print("  try <hp|mp|atk>    逐个地址测试（调试用）")
     print("  status             显示当前状态")
     print("  help               显示帮助")
     print("  exit / quit        退出")
@@ -200,6 +201,28 @@ def interactive():
                 print("  ! 用法: disable <功能|all>")
                 continue
             do_disable(args[1].lower())
+        elif cmd == "try":
+            if len(args) < 2:
+                print("  ! 用法: try <hp|mp|atk>")
+                continue
+            key = args[1] + "_results"
+            results = getattr(engine, key, {})
+            typ = engine._best_type(results)
+            if not typ or typ not in results or not results[typ]:
+                print("  ✗ 没有可测试的地址，请先扫描")
+                continue
+            addrs = results[typ]
+            is_atk = (args[1] == "atk")
+            val = 99999999 if is_atk else 999999.0
+            print(f"  类型={typ}, 共 {len(addrs)} 个地址, 将写入值={val}")
+            for i, addr in enumerate(addrs):
+                print(f"  [{i}] 地址 0x{addr:X}")
+                engine.freezer.unfreeze_all()
+                engine.freezer.freeze(addr, typ, val)
+                engine.freezer.start()
+                input(f"      按回车测试下一个...")
+            engine.freezer.unfreeze_all()
+            print("  ✓ 测试完成")
         else:
             print(f"  ✗ 未知命令: {cmd}")
 
