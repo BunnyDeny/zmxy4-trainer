@@ -136,7 +136,7 @@ class MemoryScanner:
         if first_scan or previous_results is None:
             # 全内存扫描
             results: dict[str, list[int]] = {
-                "int": [], "float": [], "double": [],
+                "int": [], "float": [], "double": [], "tagged": [],
             }
             for region in self._iter_memory_regions():
                 try:
@@ -146,6 +146,8 @@ class MemoryScanner:
                 results["int"].extend(self._scan_int(buf, region.addr, int_val))
                 results["float"].extend(self._scan_float(buf, region.addr, float_val))
                 results["double"].extend(self._scan_double(buf, region.addr, float_val))
+                # AIR tagged int: value*8+2
+                results["tagged"].extend(self._scan_int(buf, region.addr, int_val * 8 + 2))
             for k in results:
                 results[k] = sorted(set(results[k]))
             return results
@@ -159,6 +161,9 @@ class MemoryScanner:
                         if typ == "int":
                             v = self.read_int(a)
                             ok = (v == int_val)
+                        elif typ == "tagged":
+                            v = self.read_int(a)
+                            ok = (v == int_val * 8 + 2)
                         elif typ == "float":
                             v = self.read_float(a)
                             ok = (abs(v - float_val) < 0.001)
