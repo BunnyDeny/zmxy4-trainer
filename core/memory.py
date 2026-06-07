@@ -32,9 +32,8 @@ class ProcessAccessError(MemoryError):
 class ProcessManager:
     """游戏进程管理 —— 查找和附加到造梦西游4微端进程"""
 
-    # 造梦西游4微端进程名
     TARGET_PROCESSES = [
-        "zmxy_online*",        # 微端进程（显示为 zmxy_online(32位)）
+        "zmxy_online*",
     ]
 
     def __init__(self, process_name: Optional[str] = None):
@@ -43,18 +42,11 @@ class ProcessManager:
         self.process_id: Optional[int] = None
 
     def find_process(self) -> bool:
-        """
-        扫描进程列表，查找造梦微端。
-        使用 contains 匹配（zmxy_online 匹配 zmxy_online(32位)）。
-        返回 True=找到，False=没找到。
-        """
         import psutil
-
         names_to_try = (
             [self.process_name] if self.process_name
             else self.TARGET_PROCESSES
         )
-
         for name in names_to_try:
             pattern = name.replace("*", "").lower()
             for proc in psutil.process_iter(["name", "pid"]):
@@ -71,27 +63,12 @@ class ProcessManager:
         return False
 
     def _attach(self, pid: int):
-        """通过 PID 打开进程句柄"""
         import ctypes
-        from ctypes import wintypes
-
-        # 获取进程完整路径，用于日志
-        try:
-            import psutil
-            proc = psutil.Process(pid)
-            exe_path = proc.exe()
-            is_32bit = not (proc.exe().lower().endswith("64.exe"))
-            logger.debug(f"进程信息: {exe_path}, 32位={is_32bit}")
-        except Exception:
-            pass
-
-        # 先尝试完全访问权限
         access_flags = [
-            ("完全访问", 0x1F0FFF),                    # PROCESS_ALL_ACCESS
-            ("查询+读写", 0x0010 | 0x0020 | 0x0008),   # QUERY | VM_READ | VM_WRITE
-            ("最小权限", 0x0010 | 0x0020),              # QUERY | VM_READ
+            ("完全访问", 0x1F0FFF),
+            ("查询+读写", 0x0010 | 0x0020 | 0x0008),
+            ("最小权限", 0x0010 | 0x0020),
         ]
-
         last_error = ""
         for access_name, access_flag in access_flags:
             try:
@@ -112,28 +89,20 @@ class ProcessManager:
                 last_error = f"{access_name}异常: {e}"
                 logger.debug(last_error)
                 continue
-
         raise ProcessAccessError(
             f"无法打开进程 (PID={pid})。\n"
             f"最后错误: {last_error}\n\n"
             "可能的原因:\n"
             "  1. 请以管理员身份运行本辅助器\n"
-            "     (右键 → 以管理员身份运行)\n"
-            "  2. 杀毒软件拦截了内存访问\n"
-            "  3. 微端有反调试保护"
+            "  2. 杀毒软件拦截了内存访问"
         )
 
     def ensure_attached(self) -> None:
-        """确保已附加到进程，否则抛出异常"""
         if not self.pm or not self.pm.process_handle:
             if not self.find_process():
-                raise ProcessNotFoundError(
-                    f"找不到造梦西游4微端进程。请先启动游戏。\n"
-                    f"搜索: zmxy_online"
-                )
+                raise ProcessNotFoundError("找不到造梦西游4微端进程。")
 
     def close(self):
-        """关闭进程句柄"""
         if self.pm and self.pm.process_handle:
             try:
                 from ctypes import windll
@@ -147,129 +116,76 @@ class ProcessManager:
 class MemoryScanner:
     """
     内存值扫描器 —— 类似 Cheat Engine 的扫描逻辑。
-    首次扫描：找所有等于目标值的地址
-    再次扫描：从已有地址中筛选值变化的地址
+    支持 int32 / float / double 三种类型。
     """
 
     def __init__(self, process_manager: ProcessManager):
         self.pm = process_manager
         self._last_addresses: list[int] = []
 
-    def scan_int(self, value: int, first_scan: bool = True) -> list[int]:
-        """扫描 4 字节整数"""
+    def scan_all_types(self, value: float, first_scan: bool = True) -> dict:
+        """
+        同时搜索 int32、float、double 三种类型。
+        返回 {类型: [地址列表]}
+        """
         self.pm.ensure_attached()
-        addresses = []
+        results: dict[str, list[int]] = {
+            "int": [],
+            "float": [],
+            "double": [],
+        }
+
+        int_val = int(value)
+        float_val = float(value)
+
+        for region in self._iter_memory_regions():
+            try:
+                buf = self.pm.pm.read_bytes(region.addr, region.size)
+            except Exception:
+                continue
+
+            results["int"].extend(self._scan_int(buf, region.addr, int_val))
+            results["float"].extend(self._scan_float(buf, region.addr, float_val))
+            results["double"].extend(self._scan_double(buf, region.addr, float_val))
+
+        # 去重
+        for k in results:
+            results[k] = sorted(set(results[k]))
 
         if first_scan:
-            for module in self._iter_modules():
-                try:
-                    module_start = module.lpBaseOfDll
-                    module_size = module.SizeOfImage
-                    buffer = self.pm.pm.read_bytes(module_start, module_size)
-                    self._scan_buffer_int(buffer, module_start, value, addresses)
-                except Exception:
-                    continue
-            self._last_addresses = addresses
+            self._last_results = results
         else:
-            filtered = []
-            for addr in self._last_addresses:
-                try:
-                    current = self.read_int(addr)
-                    if current == value:
-                        filtered.append(addr)
-                except Exception:
-                    continue
-            self._last_addresses = filtered
+            # 在上次结果中筛
+            filtered = {}
+            for typ, addrs in self._last_results.items():
+                new_addrs = []
+                for a in addrs:
+                    try:
+                        if typ == "int":
+                            v = self.read_int(a)
+                            ok = (v == int_val)
+                        elif typ == "float":
+                            v = self.read_float(a)
+                            ok = (abs(v - float_val) < 0.001)
+                        else:
+                            v = self.read_double(a)
+                            ok = (abs(v - float_val) < 0.001)
+                        if ok:
+                            new_addrs.append(a)
+                    except Exception:
+                        continue
+                filtered[typ] = new_addrs
+            results = filtered
+            self._last_results = results
 
-        return list(self._last_addresses)
+        return results
 
-    def scan_float(self, value: float, first_scan: bool = True) -> list[int]:
-        """扫描 4 字节浮点数"""
-        self.pm.ensure_attached()
-        if first_scan:
-            addresses = []
-            for module in self._iter_modules():
-                try:
-                    module_start = module.lpBaseOfDll
-                    module_size = module.SizeOfImage
-                    buffer = self.pm.pm.read_bytes(module_start, module_size)
-                    self._scan_buffer_float(buffer, module_start, value, addresses)
-                except Exception:
-                    continue
-            self._last_addresses = addresses
-        else:
-            filtered = []
-            for addr in self._last_addresses:
-                try:
-                    current = self.read_float(addr)
-                    if abs(current - value) < 0.001:
-                        filtered.append(addr)
-                except Exception:
-                    continue
-            self._last_addresses = filtered
-
-        return list(self._last_addresses)
-
-    def scan_double(self, value: float, first_scan: bool = True) -> list[int]:
-        """扫描 8 字节双精度浮点数（Flash 游戏的 Number 类型）"""
-        self.pm.ensure_attached()
-        if first_scan:
-            addresses = []
-            for module in self._iter_modules():
-                try:
-                    module_start = module.lpBaseOfDll
-                    module_size = module.SizeOfImage
-                    buffer = self.pm.pm.read_bytes(module_start, module_size)
-                    self._scan_buffer_double(buffer, module_start, value, addresses)
-                except Exception:
-                    continue
-            self._last_addresses = addresses
-        else:
-            filtered = []
-            for addr in self._last_addresses:
-                try:
-                    current = self.read_double(addr)
-                    if abs(current - value) < 0.001:
-                        filtered.append(addr)
-                except Exception:
-                    continue
-            self._last_addresses = filtered
-        return list(self._last_addresses)
-
-    def read_int(self, address: int) -> int:
-        self.pm.ensure_attached()
-        return self.pm.pm.read_int(address)
-
-    def read_float(self, address: int) -> float:
-        self.pm.ensure_attached()
-        return self.pm.pm.read_float(address)
-
-    def read_double(self, address: int) -> float:
-        """读取 8 字节双精度浮点数"""
-        self.pm.ensure_attached()
-        return self.pm.pm.read_double(address)
-
-    def write_int(self, address: int, value: int):
-        self.pm.ensure_attached()
-        self.pm.pm.write_int(address, value)
-
-    def write_float(self, address: int, value: float):
-        self.pm.ensure_attached()
-        self.pm.pm.write_float(address, value)
-
-    def write_double(self, address: int, value: float):
-        """写入 8 字节双精度浮点数"""
-        self.pm.ensure_attached()
-        self.pm.pm.write_double(address, value)
-
-    def _iter_modules(self):
-        """遍历所有可读内存页（使用 VirtualQueryEx 枚举）"""
+    def _iter_memory_regions(self):
+        """遍历所有可读私有内存页"""
         import ctypes
         from ctypes import wintypes
 
-        # 内存状态常量
         MEM_COMMIT = 0x1000
-        PAGE_NOACCESS = 0x01
 
         class MEMORY_BASIC_INFORMATION(ctypes.Structure):
             _fields_ = [
@@ -284,100 +200,101 @@ class MemoryScanner:
 
         mbi = MEMORY_BASIC_INFORMATION()
         addr = 0
-        process_handle = self.pm.pm.process_handle
-        page_count = 0
+        ph = self.pm.pm.process_handle
 
         while True:
-            result = ctypes.windll.kernel32.VirtualQueryEx(
-                process_handle,
-                ctypes.c_void_p(addr),
-                ctypes.byref(mbi),
+            ok = ctypes.windll.kernel32.VirtualQueryEx(
+                ph, ctypes.c_void_p(addr), ctypes.byref(mbi),
                 ctypes.sizeof(mbi)
             )
-            if not result:
+            if not ok:
                 break
-
-            # Python 3.14+ ctypes 将空指针转为 None，需要转回 0
-            base_addr = mbi.BaseAddress or 0
-            region_size = mbi.RegionSize or 0
-
-            # 只扫描已提交的私有可写内存（游戏数据都在这里）
-            # MEM_PRIVATE = 0x20000, MEM_IMAGE = 0x1000000, MEM_MAPPED = 0x40000
-            if (mbi.State == MEM_COMMIT
-                    and mbi.Type == 0x20000            # MEM_PRIVATE
-                    and mbi.Protect not in (0x01,)      # 跳过 PAGE_NOACCESS
-                    and not (mbi.Protect & 0x100)       # 跳过 PAGE_GUARD
-                    and region_size > 0
-                    and region_size < 0x10000000):      # 跳过超大的区域 (>256MB)
-
-                class _MemRegion:
-                    lpBaseOfDll = base_addr
-                    SizeOfImage = region_size
-
-                yield _MemRegion()
-                page_count += 1
-
-            addr = base_addr + region_size
-            if addr <= 0 or addr > 0x7FFFFFFF:  # 防止溢出 + 32位上限
+            base = mbi.BaseAddress or 0
+            size = mbi.RegionSize or 0
+            if (mbi.State == MEM_COMMIT and mbi.Type == 0x20000
+                    and size > 0 and size < 0x10000000
+                    and mbi.Protect not in (0x01,)
+                    and not (mbi.Protect & 0x100)):
+                yield type("R", (), {"addr": base, "size": size})()
+            addr = base + size
+            if addr <= 0 or addr > 0x7FFFFFFF:
                 break
-
-        logger.info(f"内存扫描完成: 共扫描 {page_count} 个内存区域")
 
     @staticmethod
-    def _scan_buffer_int(buffer: bytes, base: int, value: int, results: list):
-        packed = struct.pack("<i", value)
+    def _scan_int(buf: bytes, base: int, val: int) -> list[int]:
+        res = []
+        packed = struct.pack("<i", val)
         pos = 0
         while True:
-            pos = buffer.find(packed, pos)
+            pos = buf.find(packed, pos)
             if pos == -1:
                 break
-            results.append(base + pos)
+            res.append(base + pos)
             pos += 4
+        return res
 
     @staticmethod
-    def _scan_buffer_float(buffer: bytes, base: int, value: float, results: list):
-        packed = struct.pack("<f", value)
+    def _scan_float(buf: bytes, base: int, val: float) -> list[int]:
+        res = []
+        packed = struct.pack("<f", val)
         pos = 0
         while True:
-            pos = buffer.find(packed, pos)
+            pos = buf.find(packed, pos)
             if pos == -1:
                 break
-            results.append(base + pos)
+            res.append(base + pos)
             pos += 4
+        return res
 
     @staticmethod
-    def _scan_buffer_double(buffer: bytes, base: int, value: float, results: list):
-        """在内存块中搜索 8 字节双精度浮点数（Flash Number 类型）"""
-        packed = struct.pack("<d", value)
+    def _scan_double(buf: bytes, base: int, val: float) -> list[int]:
+        res = []
+        packed = struct.pack("<d", val)
         pos = 0
         while True:
-            pos = buffer.find(packed, pos)
+            pos = buf.find(packed, pos)
             if pos == -1:
                 break
-            results.append(base + pos)
+            res.append(base + pos)
             pos += 8
+        return res
+
+    def read_int(self, address: int) -> int:
+        self.pm.ensure_attached()
+        return self.pm.pm.read_int(address)
+
+    def read_float(self, address: int) -> float:
+        self.pm.ensure_attached()
+        return self.pm.pm.read_float(address)
+
+    def read_double(self, address: int) -> float:
+        self.pm.ensure_attached()
+        return self.pm.pm.read_double(address)
+
+    def write_int(self, address: int, value: int):
+        self.pm.ensure_attached()
+        self.pm.pm.write_int(address, value)
+
+    def write_float(self, address: int, value: float):
+        self.pm.ensure_attached()
+        self.pm.pm.write_float(address, value)
+
+    def write_double(self, address: int, value: float):
+        self.pm.ensure_attached()
+        self.pm.pm.write_double(address, value)
 
 
 class MemoryFreezer:
-    """
-    内存值冻结器 —— 后台线程不断将指定地址写回目标值。
-    """
+    """内存值冻结器 —— 后台线程不断将指定地址写回目标值。"""
 
     def __init__(self, scanner: MemoryScanner):
         self.scanner = scanner
-        self._frozen: dict[int, tuple] = {}
+        self._frozen: dict[int, str, object] = {}
         self._running = False
         self._thread = None
 
-    def freeze_int(self, address: int, value: int):
-        self._frozen[address] = ("int", value)
-
-    def freeze_float(self, address: int, value: float):
-        self._frozen[address] = ("float", value)
-
-    def freeze_double(self, address: int, value: float):
-        """锁定一个地址为指定双精度浮点数值"""
-        self._frozen[address] = ("double", value)
+    def freeze(self, address: int, typ: str, value: object):
+        self._frozen[address] = (typ, value)
 
     def unfreeze(self, address: int):
         self._frozen.pop(address, None)
@@ -386,7 +303,6 @@ class MemoryFreezer:
         self._frozen.clear()
 
     def _loop(self):
-        import threading
         self._running = True
         while self._running:
             for addr, (typ, value) in list(self._frozen.items()):

@@ -504,9 +504,10 @@ class CheatApp:
         self._log(f"首次扫描血量: {value}，请稍候...")
 
         def do_scan():
-            count = self.cheats.scan_hp_first(value)
-            self.root.after(0, lambda: self._hp_count.config(text=f"地址: {count} 个"))
-            self.root.after(0, lambda: self._log(f"找到 {count} 个血量地址"))
+            counts = self.cheats.scan_hp(value, first_scan=True)
+            text = "  |  ".join(f"{t}: {c}" for t, c in counts.items())
+            self.root.after(0, lambda: self._hp_count.config(text=text))
+            self.root.after(0, lambda: self._log(f"血量结果: {text}"))
 
         import threading
         threading.Thread(target=do_scan, daemon=True).start()
@@ -518,9 +519,10 @@ class CheatApp:
         self._log(f"再次扫描血量: {value}")
 
         def do_scan():
-            count = self.cheats.scan_hp_next(value)
-            self.root.after(0, lambda: self._hp_count.config(text=f"地址: {count} 个"))
-            self.root.after(0, lambda: self._log(f"剩余 {count} 个血量地址"))
+            counts = self.cheats.scan_hp(value, first_scan=False)
+            text = "  |  ".join(f"{t}: {c}" for t, c in counts.items())
+            self.root.after(0, lambda: self._hp_count.config(text=text))
+            self.root.after(0, lambda: self._log(f"血量剩余: {text}"))
 
         import threading
         threading.Thread(target=do_scan, daemon=True).start()
@@ -532,9 +534,10 @@ class CheatApp:
         self._log(f"首次扫描法力: {value}，请稍候...")
 
         def do_scan():
-            count = self.cheats.scan_mp_first(value)
-            self.root.after(0, lambda: self._mp_count.config(text=f"地址: {count} 个"))
-            self.root.after(0, lambda: self._log(f"找到 {count} 个法力地址"))
+            counts = self.cheats.scan_mp(value, first_scan=True)
+            text = "  |  ".join(f"{t}: {c}" for t, c in counts.items())
+            self.root.after(0, lambda: self._mp_count.config(text=text))
+            self.root.after(0, lambda: self._log(f"法力结果: {text}"))
 
         import threading
         threading.Thread(target=do_scan, daemon=True).start()
@@ -546,9 +549,10 @@ class CheatApp:
         self._log(f"再次扫描法力: {value}")
 
         def do_scan():
-            count = self.cheats.scan_mp_next(value)
-            self.root.after(0, lambda: self._mp_count.config(text=f"地址: {count} 个"))
-            self.root.after(0, lambda: self._log(f"剩余 {count} 个法力地址"))
+            counts = self.cheats.scan_mp(value, first_scan=False)
+            text = "  |  ".join(f"{t}: {c}" for t, c in counts.items())
+            self.root.after(0, lambda: self._mp_count.config(text=text))
+            self.root.after(0, lambda: self._log(f"法力剩余: {text}"))
 
         import threading
         threading.Thread(target=do_scan, daemon=True).start()
@@ -560,9 +564,10 @@ class CheatApp:
         self._log(f"首次扫描攻击: {value}，请稍候...")
 
         def do_scan():
-            count = self.cheats.scan_attack_first(value)
-            self.root.after(0, lambda: self._atk_count.config(text=f"地址: {count} 个"))
-            self.root.after(0, lambda: self._log(f"找到 {count} 个攻击力地址"))
+            counts = self.cheats.scan_attack(value, first_scan=True)
+            text = "  |  ".join(f"{t}: {c}" for t, c in counts.items())
+            self.root.after(0, lambda: self._atk_count.config(text=text))
+            self.root.after(0, lambda: self._log(f"攻击结果: {text}"))
 
         import threading
         threading.Thread(target=do_scan, daemon=True).start()
@@ -574,9 +579,10 @@ class CheatApp:
         self._log(f"再次扫描攻击: {value}")
 
         def do_scan():
-            count = self.cheats.scan_attack_next(value)
-            self.root.after(0, lambda: self._atk_count.config(text=f"地址: {count} 个"))
-            self.root.after(0, lambda: self._log(f"剩余 {count} 个攻击力地址"))
+            counts = self.cheats.scan_attack(value, first_scan=False)
+            text = "  |  ".join(f"{t}: {c}" for t, c in counts.items())
+            self.root.after(0, lambda: self._atk_count.config(text=text))
+            self.root.after(0, lambda: self._log(f"攻击剩余: {text}"))
 
         import threading
         threading.Thread(target=do_scan, daemon=True).start()
