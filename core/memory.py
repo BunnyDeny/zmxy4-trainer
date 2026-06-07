@@ -285,6 +285,7 @@ class MemoryScanner:
         mbi = MEMORY_BASIC_INFORMATION()
         addr = 0
         process_handle = self.pm.pm.process_handle
+        page_count = 0
 
         while True:
             result = ctypes.windll.kernel32.VirtualQueryEx(
@@ -300,20 +301,27 @@ class MemoryScanner:
             base_addr = mbi.BaseAddress or 0
             region_size = mbi.RegionSize or 0
 
-            # 只扫描已提交、可读的内存（跳过 PAGE_NOACCESS）
+            # 只扫描已提交的私有可写内存（游戏数据都在这里）
+            # MEM_PRIVATE = 0x20000, MEM_IMAGE = 0x1000000, MEM_MAPPED = 0x40000
             if (mbi.State == MEM_COMMIT
-                    and mbi.Protect != PAGE_NOACCESS
-                    and not (mbi.Protect & 0x100)
-                    and region_size > 0):  # 跳过 PAGE_GUARD
+                    and mbi.Type == 0x20000            # MEM_PRIVATE
+                    and mbi.Protect not in (0x01,)      # 跳过 PAGE_NOACCESS
+                    and not (mbi.Protect & 0x100)       # 跳过 PAGE_GUARD
+                    and region_size > 0
+                    and region_size < 0x10000000):      # 跳过超大的区域 (>256MB)
+
                 class _MemRegion:
                     lpBaseOfDll = base_addr
                     SizeOfImage = region_size
 
                 yield _MemRegion()
+                page_count += 1
 
             addr = base_addr + region_size
             if addr <= 0 or addr > 0x7FFFFFFF:  # 防止溢出 + 32位上限
                 break
+
+        logger.info(f"内存扫描完成: 共扫描 {page_count} 个内存区域")
 
     @staticmethod
     def _scan_buffer_int(buffer: bytes, base: int, value: int, results: list):
