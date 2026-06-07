@@ -2,6 +2,15 @@
 chcp 65001 >nul
 title 造梦西游4 · 天机辅助器
 
+:: 检查是否已经是管理员权限
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [信息] 正在请求管理员权限（点击"是"继续）...
+    :: 用 PowerShell 重新以管理员身份运行自己
+    PowerShell -Command "Start-Process '%~f0' -Verb RunAs"
+    exit /b
+)
+
 echo =====================================
 echo   造梦西游4 · 天机辅助器 v1.0
 echo =====================================
@@ -17,7 +26,6 @@ if %errorlevel% neq 0 (
 )
 
 :: 检查依赖
-echo [检查] 验证依赖库...
 python -c "import pymem, psutil" >nul 2>&1
 if %errorlevel% neq 0 (
     echo [信息] 正在安装依赖库...
@@ -31,11 +39,7 @@ if %errorlevel% neq 0 (
 
 :: 启动
 echo [启动] 正在启动辅助器...
-echo [提示] 请确保造梦西游4已经运行
 echo.
-start python main.py
+python main.py
 
-echo 辅助器已启动，如果界面未出现请手动运行:
-echo   python main.py
-echo.
 pause
