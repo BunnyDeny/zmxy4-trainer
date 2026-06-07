@@ -57,19 +57,22 @@ class CheatEngine:
 
     def scan_hp(self, value: float, first_scan: bool) -> dict[str, int]:
         """扫描血量（全类型），返回 {类型: 地址数}"""
-        results = self.scanner.scan_all_types(value, first_scan)
+        prev = None if first_scan else self.hp_results
+        results = self.scanner.scan_all_types(value, first_scan, prev)
         self.hp_results = results
         return {k: len(v) for k, v in results.items()}
 
     def scan_mp(self, value: float, first_scan: bool) -> dict[str, int]:
         """扫描法力（全类型）"""
-        results = self.scanner.scan_all_types(value, first_scan)
+        prev = None if first_scan else self.mp_results
+        results = self.scanner.scan_all_types(value, first_scan, prev)
         self.mp_results = results
         return {k: len(v) for k, v in results.items()}
 
     def scan_attack(self, value: int, first_scan: bool) -> dict[str, int]:
         """扫描攻击力（全类型）"""
-        results = self.scanner.scan_all_types(float(value), first_scan)
+        prev = None if first_scan else self.atk_results
+        results = self.scanner.scan_all_types(float(value), first_scan, prev)
         self.atk_results = results
         return {k: len(v) for k, v in results.items()}
 

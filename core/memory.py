@@ -123,41 +123,36 @@ class MemoryScanner:
         self.pm = process_manager
         self._last_addresses: list[int] = []
 
-    def scan_all_types(self, value: float, first_scan: bool = True) -> dict:
+    def scan_all_types(self, value: float, first_scan: bool = True,
+                       previous_results: Optional[dict] = None) -> dict:
         """
         同时搜索 int32、float、double 三种类型。
-        返回 {类型: [地址列表]}
+        :param previous_results: 首次扫描传 None，再次扫描传入上次结果 dict
         """
         self.pm.ensure_attached()
-        results: dict[str, list[int]] = {
-            "int": [],
-            "float": [],
-            "double": [],
-        }
-
         int_val = int(value)
         float_val = float(value)
 
-        for region in self._iter_memory_regions():
-            try:
-                buf = self.pm.pm.read_bytes(region.addr, region.size)
-            except Exception:
-                continue
-
-            results["int"].extend(self._scan_int(buf, region.addr, int_val))
-            results["float"].extend(self._scan_float(buf, region.addr, float_val))
-            results["double"].extend(self._scan_double(buf, region.addr, float_val))
-
-        # 去重
-        for k in results:
-            results[k] = sorted(set(results[k]))
-
-        if first_scan:
-            self._last_results = results
+        if first_scan or previous_results is None:
+            # 全内存扫描
+            results: dict[str, list[int]] = {
+                "int": [], "float": [], "double": [],
+            }
+            for region in self._iter_memory_regions():
+                try:
+                    buf = self.pm.pm.read_bytes(region.addr, region.size)
+                except Exception:
+                    continue
+                results["int"].extend(self._scan_int(buf, region.addr, int_val))
+                results["float"].extend(self._scan_float(buf, region.addr, float_val))
+                results["double"].extend(self._scan_double(buf, region.addr, float_val))
+            for k in results:
+                results[k] = sorted(set(results[k]))
+            return results
         else:
-            # 在上次结果中筛
+            # 在已有结果中筛选
             filtered = {}
-            for typ, addrs in self._last_results.items():
+            for typ, addrs in previous_results.items():
                 new_addrs = []
                 for a in addrs:
                     try:
@@ -175,10 +170,7 @@ class MemoryScanner:
                     except Exception:
                         continue
                 filtered[typ] = new_addrs
-            results = filtered
-            self._last_results = results
-
-        return results
+            return filtered
 
     def _iter_memory_regions(self):
         """遍历所有可读私有内存页"""
