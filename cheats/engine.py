@@ -151,4 +151,11 @@ class CheatEngine:
     def get_status(self) -> dict:
         return {
             "attached": self._attached,
+            "god_mode": bool(self.hp_results and self.freezer._frozen),
+            "infinite_hp": bool(self.hp_results and self.freezer._frozen),
+            "infinite_mp": bool(self.mp_results and self.freezer._frozen),
+            "one_hit_kill": bool(self.atk_results and self.freezer._frozen),
+            "hp_addresses": sum(len(v) for v in self.hp_results.values()),
+            "mp_addresses": sum(len(v) for v in self.mp_results.values()),
+            "attack_addresses": sum(len(v) for v in self.atk_results.values()),
         }
