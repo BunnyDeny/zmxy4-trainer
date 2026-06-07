@@ -2,6 +2,9 @@
 chcp 65001 >nul
 title 造梦西游4 · 天机辅助器
 
+:: 切换到脚本所在目录
+cd /d "%~dp0"
+
 :: 检查是否已经是管理员权限
 net session >nul 2>&1
 if %errorlevel% neq 0 (
