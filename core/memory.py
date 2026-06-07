@@ -263,14 +263,60 @@ class MemoryScanner:
         self.pm.pm.write_double(address, value)
 
     def _iter_modules(self):
-        """遍历进程所有模块（使用 pymem 内置方法）"""
-        try:
-            modules = self.pm.pm.list_modules()
-            for module in modules:
-                # pymem 版本不同，module 可能有不同属性名
-                yield module
-        except Exception as e:
-            logger.error(f"遍历模块失败: {e}")
+        """遍历所有可读内存页（使用 VirtualQueryEx 枚举）"""
+        import ctypes
+        from ctypes import wintypes
+
+        SYSTEM_INFO = ctypes.wintypes.SYSTEM_INFO()
+        ctypes.windll.kernel32.GetSystemInfo(ctypes.byref(SYSTEM_INFO))
+        page_size = SYSTEM_INFO.dwPageSize
+
+        # 内存状态常量
+        MEM_COMMIT = 0x1000
+        PAGE_READABLE = 0x02  # PAGE_READONLY
+        PAGE_READWRITE = 0x04
+        PAGE_EXECUTE_READ = 0x20
+        PAGE_EXECUTE_READWRITE = 0x40
+
+        class MEMORY_BASIC_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BaseAddress", ctypes.c_void_p),
+                ("AllocationBase", ctypes.c_void_p),
+                ("AllocationProtect", wintypes.DWORD),
+                ("RegionSize", ctypes.c_size_t),
+                ("State", wintypes.DWORD),
+                ("Protect", wintypes.DWORD),
+                ("Type", wintypes.DWORD),
+            ]
+
+        mbi = MEMORY_BASIC_INFORMATION()
+        addr = 0
+        process_handle = self.pm.pm.process_handle
+
+        while True:
+            result = ctypes.windll.kernel32.VirtualQueryEx(
+                process_handle,
+                ctypes.c_void_p(addr),
+                ctypes.byref(mbi),
+                ctypes.sizeof(mbi)
+            )
+            if not result:
+                break
+
+            # 只扫描已提交、可读的内存
+            if (mbi.State == MEM_COMMIT
+                and mbi.Protect in (PAGE_READABLE, PAGE_READWRITE,
+                                    PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE)):
+                # yield 一个模拟模块的对象
+                class _MemRegion:
+                    lpBaseOfDll = mbi.BaseAddress
+                    SizeOfImage = mbi.RegionSize
+
+                yield _MemRegion()
+
+            addr = mbi.BaseAddress + mbi.RegionSize
+            if addr > 0x7FFFFFFF:  # 32位进程上限
+                break
 
     @staticmethod
     def _scan_buffer_int(buffer: bytes, base: int, value: int, results: list):
