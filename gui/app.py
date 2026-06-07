@@ -220,7 +220,7 @@ class CheatApp:
         )
         self._btn_connect.pack(side=tk.LEFT)
 
-        ToolTip(self._btn_find, "扫描系统进程，自动找到造梦西游4\n支持：360游戏大厅 / 微端 / 浏览器")
+        ToolTip(self._btn_find, "扫描系统进程，自动找到造梦西游4微端\n进程名：zmxy_online")
         ToolTip(self._btn_connect, "连接到游戏进程，建立内存通信")
 
     def _build_scan_panel(self, parent):

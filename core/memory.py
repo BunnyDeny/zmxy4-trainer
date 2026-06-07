@@ -23,17 +23,11 @@ class ProcessNotFoundError(MemoryError):
 
 
 class ProcessManager:
-    """游戏进程管理 —— 查找和附加到造梦西游4进程"""
+    """游戏进程管理 —— 查找和附加到造梦西游4微端进程"""
 
-    # 造梦西游4可能的进程名列表（各种平台/版本）
+    # 造梦西游4微端进程名
     TARGET_PROCESSES = [
-        "ZaoMengXiYou4.exe",
-        "zaomengxiyou4.exe",
-        "ZMYX4.exe",
-        "FlashPlayerPlugin_*.exe",       # Flash 浏览器插件
-        "flashplayer_32_sa.exe",          # 独立Flash播放器
-        "4399GameBox.exe",                # 4399游戏盒
-        "chromium.exe",                   # 某些H5版本
+        "zmxy_online*",        # 微端进程（显示为 zmxy_online(32位)）
     ]
 
     def __init__(self, process_name: Optional[str] = None):
