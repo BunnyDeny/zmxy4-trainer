@@ -5,6 +5,51 @@
 
 ---
 
+## 🚀 快速上手（两种方式）
+
+本辅助器有两种运行方式，任选其一：
+
+### 方式一：下载编译版（适合普通用户）
+
+去 GitHub Actions 页面下载打包好的 `.exe`，**双击即用，无需任何环境配置**：
+https://github.com/BunnyDeny/zmxy4-trainer/actions
+
+> 每次代码更新后需要重新下载 .exe。
+
+### 方式二：源码运行（推荐，适合长期使用）
+
+这种方式只需一次环境搭建，以后更新只需 `git pull`，不用重新下载。
+
+#### Windows 环境搭建（一次性）
+
+```bash
+① 安装 Python
+   下载 https://www.python.org/downloads/
+   安装时务必勾选 ☑ "Add Python to PATH"
+
+② 克隆项目
+   git clone git@github.com:BunnyDeny/zmxy4-trainer.git
+   cd zmxy4-trainer
+
+③ 安装依赖
+   pip install -r requirements.txt
+
+④ 运行
+   python main.py
+```
+
+#### 日常更新（以后每次）
+
+```bash
+cd zmxy4-trainer
+git pull
+python main.py
+```
+
+10 秒搞定，不用重新下载任何东西。
+
+---
+
 ## 功能总览
 
 | 功能 | 效果 | 使用前提 |
