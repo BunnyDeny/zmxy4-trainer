@@ -267,16 +267,9 @@ class MemoryScanner:
         import ctypes
         from ctypes import wintypes
 
-        SYSTEM_INFO = ctypes.wintypes.SYSTEM_INFO()
-        ctypes.windll.kernel32.GetSystemInfo(ctypes.byref(SYSTEM_INFO))
-        page_size = SYSTEM_INFO.dwPageSize
-
         # 内存状态常量
         MEM_COMMIT = 0x1000
-        PAGE_READABLE = 0x02  # PAGE_READONLY
-        PAGE_READWRITE = 0x04
-        PAGE_EXECUTE_READ = 0x20
-        PAGE_EXECUTE_READWRITE = 0x40
+        PAGE_NOACCESS = 0x01
 
         class MEMORY_BASIC_INFORMATION(ctypes.Structure):
             _fields_ = [
@@ -303,11 +296,10 @@ class MemoryScanner:
             if not result:
                 break
 
-            # 只扫描已提交、可读的内存
+            # 只扫描已提交、可读的内存（跳过 PAGE_NOACCESS）
             if (mbi.State == MEM_COMMIT
-                and mbi.Protect in (PAGE_READABLE, PAGE_READWRITE,
-                                    PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE)):
-                # yield 一个模拟模块的对象
+                    and mbi.Protect != PAGE_NOACCESS
+                    and not (mbi.Protect & 0x100)):  # 跳过 PAGE_GUARD
                 class _MemRegion:
                     lpBaseOfDll = mbi.BaseAddress
                     SizeOfImage = mbi.RegionSize
