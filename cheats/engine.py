@@ -101,26 +101,26 @@ class CheatEngine:
         return result
 
     def scan_hp_first(self, current_hp: int) -> int:
-        """首次扫描血量（输入当前血量值）"""
-        addrs = self.scanner.scan_float(float(current_hp), first_scan=True)
+        """首次扫描血量（Flash Number = 8字节双精度）"""
+        addrs = self.scanner.scan_double(float(current_hp), first_scan=True)
         self.hp_addresses = addrs
         return len(addrs)
 
     def scan_hp_next(self, current_hp: int) -> int:
-        """再次扫描血量（受到伤害后输入新的血量值）"""
-        addrs = self.scanner.scan_float(float(current_hp), first_scan=False)
+        """再次扫描血量"""
+        addrs = self.scanner.scan_double(float(current_hp), first_scan=False)
         self.hp_addresses = addrs
         return len(addrs)
 
     def scan_mp_first(self, current_mp: int) -> int:
-        """首次扫描法力"""
-        addrs = self.scanner.scan_float(float(current_mp), first_scan=True)
+        """首次扫描法力（Flash Number = 8字节双精度）"""
+        addrs = self.scanner.scan_double(float(current_mp), first_scan=True)
         self.mp_addresses = addrs
         return len(addrs)
 
     def scan_mp_next(self, current_mp: int) -> int:
         """再次扫描法力"""
-        addrs = self.scanner.scan_float(float(current_mp), first_scan=False)
+        addrs = self.scanner.scan_double(float(current_mp), first_scan=False)
         self.mp_addresses = addrs
         return len(addrs)
 
@@ -147,7 +147,7 @@ class CheatEngine:
 
         self._infinite_hp = True
         for addr in self.hp_addresses:
-            self.freezer.freeze_float(addr, self._max_hp)
+            self.freezer.freeze_double(addr, self._max_hp)
         self.freezer.start()
         logger.info("无限血量已开启")
 
@@ -167,7 +167,7 @@ class CheatEngine:
 
         self._infinite_mp = True
         for addr in self.mp_addresses:
-            self.freezer.freeze_float(addr, self._max_mp)
+            self.freezer.freeze_double(addr, self._max_mp)
         self.freezer.start()
         logger.info("无限法力已开启")
 
@@ -190,7 +190,7 @@ class CheatEngine:
 
         self._god_mode = True
         for addr in self.hp_addresses:
-            self.freezer.freeze_float(addr, self._god_hp)
+            self.freezer.freeze_double(addr, self._god_hp)
         self.freezer.start()
         logger.info("无敌模式已开启")
 
@@ -241,7 +241,7 @@ class CheatEngine:
             for offset in range(-0x200, 0, 4):
                 try:
                     addr = player_hp_addr + offset
-                    val = self.scanner.read_float(addr)
+                    val = self.scanner.read_double(addr)
                     # 如果这个地址也在合理血量范围（1~10000），视为怪物血量
                     if 1.0 < val < 10000.0:
                         suicide_addrs.append(addr)
@@ -254,7 +254,7 @@ class CheatEngine:
 
         if suicide_addrs:
             for addr in suicide_addrs:
-                self.freezer.freeze_float(addr, 0.0)
+                self.freezer.freeze_double(addr, 0.0)
             self.freezer.start()
             logger.info(f"怪物自杀已开启（{len(suicide_addrs)} 个地址）")
         else:

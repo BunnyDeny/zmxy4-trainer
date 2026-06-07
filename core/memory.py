@@ -210,6 +210,32 @@ class MemoryScanner:
 
         return list(self._last_addresses)
 
+    def scan_double(self, value: float, first_scan: bool = True) -> list[int]:
+        """扫描 8 字节双精度浮点数（Flash 游戏的 Number 类型）"""
+        self.pm.ensure_attached()
+        if first_scan:
+            addresses = []
+            for module in self._iter_modules():
+                try:
+                    module_start = module.lpBaseOfDll
+                    module_size = module.SizeOfImage
+                    buffer = self.pm.pm.read_bytes(module_start, module_size)
+                    self._scan_buffer_double(buffer, module_start, value, addresses)
+                except Exception:
+                    continue
+            self._last_addresses = addresses
+        else:
+            filtered = []
+            for addr in self._last_addresses:
+                try:
+                    current = self.read_double(addr)
+                    if abs(current - value) < 0.001:
+                        filtered.append(addr)
+                except Exception:
+                    continue
+            self._last_addresses = filtered
+        return list(self._last_addresses)
+
     def read_int(self, address: int) -> int:
         self.pm.ensure_attached()
         return self.pm.pm.read_int(address)
@@ -218,6 +244,11 @@ class MemoryScanner:
         self.pm.ensure_attached()
         return self.pm.pm.read_float(address)
 
+    def read_double(self, address: int) -> float:
+        """读取 8 字节双精度浮点数"""
+        self.pm.ensure_attached()
+        return self.pm.pm.read_double(address)
+
     def write_int(self, address: int, value: int):
         self.pm.ensure_attached()
         self.pm.pm.write_int(address, value)
@@ -225,6 +256,11 @@ class MemoryScanner:
     def write_float(self, address: int, value: float):
         self.pm.ensure_attached()
         self.pm.pm.write_float(address, value)
+
+    def write_double(self, address: int, value: float):
+        """写入 8 字节双精度浮点数"""
+        self.pm.ensure_attached()
+        self.pm.pm.write_double(address, value)
 
     def _iter_modules(self):
         """遍历进程所有模块（使用 pymem 内置方法）"""
@@ -258,6 +294,18 @@ class MemoryScanner:
             results.append(base + pos)
             pos += 4
 
+    @staticmethod
+    def _scan_buffer_double(buffer: bytes, base: int, value: float, results: list):
+        """在内存块中搜索 8 字节双精度浮点数（Flash Number 类型）"""
+        packed = struct.pack("<d", value)
+        pos = 0
+        while True:
+            pos = buffer.find(packed, pos)
+            if pos == -1:
+                break
+            results.append(base + pos)
+            pos += 8
+
 
 class MemoryFreezer:
     """
@@ -276,6 +324,10 @@ class MemoryFreezer:
     def freeze_float(self, address: int, value: float):
         self._frozen[address] = ("float", value)
 
+    def freeze_double(self, address: int, value: float):
+        """锁定一个地址为指定双精度浮点数值"""
+        self._frozen[address] = ("double", value)
+
     def unfreeze(self, address: int):
         self._frozen.pop(address, None)
 
@@ -290,6 +342,8 @@ class MemoryFreezer:
                 try:
                     if typ == "int":
                         self.scanner.write_int(addr, value)
+                    elif typ == "double":
+                        self.scanner.write_double(addr, value)
                     else:
                         self.scanner.write_float(addr, value)
                 except Exception:
