@@ -1,0 +1,10 @@
+# 造梦西游4 天机辅助器 - 依赖清单
+# Windows 10 下运行
+# 安装: pip install -r requirements.txt
+
+# 核心依赖
+pymem>=1.13.0          # 进程内存读写
+psutil>=5.9.0          # 系统进程管理
+
+# 可选（窗口标题扫描，更精确的进程查找）
+pywin32>=305           # Windows API 封装
