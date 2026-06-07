@@ -227,27 +227,14 @@ class MemoryScanner:
         self.pm.pm.write_float(address, value)
 
     def _iter_modules(self):
-        """遍历进程所有模块"""
-        from ctypes import sizeof
-        from pymem.ressources.structure import MODULEENTRY32
-
-        h_module_snapshot = pymem.process.create_toolhelp32_snapshot(
-            0x00000008,  # TH32CS_SNAPMODULE
-            self.pm.pm.process_id
-        )
-        if h_module_snapshot == -1:
-            return
-
+        """遍历进程所有模块（使用 pymem 内置方法）"""
         try:
-            me = MODULEENTRY32()
-            me.dwSize = sizeof(MODULEENTRY32)
-            success = pymem.process.module32_first(h_module_snapshot, me)
-            while success:
-                yield me
-                success = pymem.process.module32_next(h_module_snapshot, me)
-        finally:
-            from pymem.process import kernel32
-            kernel32.CloseHandle(h_module_snapshot)
+            modules = self.pm.pm.list_modules()
+            for module in modules:
+                # pymem 版本不同，module 可能有不同属性名
+                yield module
+        except Exception as e:
+            logger.error(f"遍历模块失败: {e}")
 
     @staticmethod
     def _scan_buffer_int(buffer: bytes, base: int, value: int, results: list):
