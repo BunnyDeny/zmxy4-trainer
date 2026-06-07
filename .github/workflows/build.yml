@@ -1,0 +1,48 @@
+name: Build Windows .exe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # 手动触发
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: "x64"
+
+      - name: 安装依赖
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: 打包 .exe
+        run: |
+          pyinstaller --onefile --windowed --name "zmxy4-trainer" main.py 2>&1 | Tee-Object -Variable buildLog
+          Write-Output "===== BUILD LOG ====="
+          Write-Output $buildLog
+
+      - name: 上传 .exe 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: zmxy4-trainer-windows
+          path: dist/zmxy4-trainer.exe
+
+      - name: 检查产物大小
+        run: |
+          if (Test-Path "dist/zmxy4-trainer.exe") {
+            $size = (Get-Item "dist/zmxy4-trainer.exe").Length / 1MB
+            Write-Output "✅ 打包成功！文件大小: $([math]::Round($size, 2)) MB"
+          } else {
+            Write-Output "❌ 打包失败：未找到 exe 文件"
+            exit 1
+          }
