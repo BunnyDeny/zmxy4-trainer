@@ -14,11 +14,6 @@ from cheats import CheatEngine
 
 engine = CheatEngine()
 
-# 分别跟踪 hp/mp/atk 的首次/再次扫描状态
-_hp_first = True
-_mp_first = True
-_atk_first = True
-
 
 def print_banner():
     print()
@@ -31,9 +26,9 @@ def print_banner():
 
 def print_help():
     print("命令列表:")
-    print("  scan hp <数值>     首次/再次扫描血量")
-    print("  scan mp <数值>     首次/再次扫描法力")
-    print("  scan atk <数值>    首次/再次扫描攻击力")
+    print("  scan <hp|mp|atk> <数值>      扫描（自动判断首次/再次）")
+    print("  scan -f <hp|mp|atk> <数值>   强制首次扫描")
+    print("  scan -n <hp|mp|atk> <数值>   强制再次扫描")
     print("  enable <功能>      开启功能")
     print("  disable <功能>     关闭功能")
     print("  status             显示当前状态")
@@ -53,12 +48,24 @@ def do_connect() -> bool:
     return ok
 
 
-def do_scan(target: str, value_str: str):
-    global _hp_first, _mp_first, _atk_first
-
+def do_scan(args: list):
+    """scan <hp|mp|atk> [-f|-n] <数值>"""
     if not engine.is_attached:
         print("  ✗ 未连接，请先连接")
         return
+
+    target = args[0].lower()
+    if target not in ("hp", "mp", "atk"):
+        print(f"  ✗ 未知目标: {target}")
+        return
+
+    # 解析 -f / -n 标志
+    if len(args) >= 3 and args[1].startswith("-"):
+        flag = args[1]
+        value_str = args[2]
+    else:
+        flag = ""
+        value_str = args[1]
 
     try:
         value = float(value_str)
@@ -66,22 +73,19 @@ def do_scan(target: str, value_str: str):
         print(f"  ✗ 无效数值: {value_str}")
         return
 
-    if target == "hp":
-        first = _hp_first
-        _hp_first = False
-        label = "血量"
-    elif target == "mp":
-        first = _mp_first
-        _mp_first = False
-        label = "法力"
-    elif target == "atk":
-        first = _atk_first
-        _atk_first = False
-        label = "攻击力"
-        value = int(value)
+    # 判断首次/再次
+    if flag == "-f":
+        first = True
+    elif flag == "-n":
+        first = False
     else:
-        print(f"  ✗ 未知目标: {target}")
-        return
+        # 自动判断：有已存结果就是再次，否则首次
+        results = getattr(engine, f"{target}_results", {})
+        first = not bool(results and any(results.values()))
+
+    label = {"hp": "血量", "mp": "法力", "atk": "攻击力"}[target]
+    if target == "atk":
+        value = int(value)
 
     mode = "首次扫描" if first else "再次扫描"
     print(f"  → {mode} {label}: {value}")
@@ -127,10 +131,6 @@ def do_disable(feature: str):
     if feature == "all":
         engine.disable_all()
         print("  ✓ 所有功能已关闭")
-        global _hp_first, _mp_first, _atk_first
-        _hp_first = True
-        _mp_first = True
-        _atk_first = True
     else:
         print(f"  ✗ 未知: {feature}")
 
@@ -179,10 +179,17 @@ def interactive():
         elif cmd == "connect":
             do_connect()
         elif cmd == "scan":
-            if len(args) < 3:
-                print("  ! 用法: scan <hp|mp|atk> <数值>")
+            if len(args) < 2:
+                print("  ! 用法: scan <hp|mp|atk> [-f|-n] <数值>")
                 continue
-            do_scan(args[1].lower(), args[2])
+            if args[1].startswith("-"):
+                # scan -f hp 16050 这种格式
+                if len(args) < 3:
+                    print("  ! 用法: scan [-f|-n] <hp|mp|atk> <数值>")
+                    continue
+                do_scan([args[2], args[1], args[3]])
+            else:
+                do_scan(args[1:])
         elif cmd == "enable":
             if len(args) < 2:
                 print("  ! 用法: enable <god|inf-hp|inf-mp|one-hit>")
@@ -207,7 +214,10 @@ def main():
             print("连接失败")
             return
         if cmd == "scan" and len(sys.argv) >= 4:
-            do_scan(sys.argv[2].lower(), sys.argv[3])
+            do_scan(sys.argv[2:])
+        elif cmd == "scan" and len(sys.argv) >= 5:
+            # scan -f hp 16050 格式
+            do_scan([sys.argv[3], sys.argv[2], sys.argv[4]])
         elif cmd == "enable" and len(sys.argv) >= 3:
             do_enable(sys.argv[2].lower())
         elif cmd == "disable" and len(sys.argv) >= 3:
