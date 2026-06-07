@@ -501,51 +501,85 @@ class CheatApp:
         value = self._get_scan_value(self._hp_entry)
         if value is None:
             return
-        self._log(f"首次扫描血量: {value}")
-        count = self.cheats.scan_hp_first(value)
-        self._hp_count.config(text=f"地址: {count} 个")
-        self._log(f"找到 {count} 个血量地址")
+        self._log(f"首次扫描血量: {value}，请稍候...")
+
+        def do_scan():
+            count = self.cheats.scan_hp_first(value)
+            self.root.after(0, lambda: self._hp_count.config(text=f"地址: {count} 个"))
+            self.root.after(0, lambda: self._log(f"找到 {count} 个血量地址"))
+
+        import threading
+        threading.Thread(target=do_scan, daemon=True).start()
 
     def _on_scan_hp_next(self):
         value = self._get_scan_value(self._hp_entry)
         if value is None:
             return
         self._log(f"再次扫描血量: {value}")
-        count = self.cheats.scan_hp_next(value)
-        self._hp_count.config(text=f"地址: {count} 个")
-        self._log(f"剩余 {count} 个血量地址")
+
+        def do_scan():
+            count = self.cheats.scan_hp_next(value)
+            self.root.after(0, lambda: self._hp_count.config(text=f"地址: {count} 个"))
+            self.root.after(0, lambda: self._log(f"剩余 {count} 个血量地址"))
+
+        import threading
+        threading.Thread(target=do_scan, daemon=True).start()
 
     def _on_scan_mp_first(self):
         value = self._get_scan_value(self._mp_entry)
         if value is None:
             return
-        count = self.cheats.scan_mp_first(value)
-        self._mp_count.config(text=f"地址: {count} 个")
-        self._log(f"找到 {count} 个法力地址")
+        self._log(f"首次扫描法力: {value}，请稍候...")
+
+        def do_scan():
+            count = self.cheats.scan_mp_first(value)
+            self.root.after(0, lambda: self._mp_count.config(text=f"地址: {count} 个"))
+            self.root.after(0, lambda: self._log(f"找到 {count} 个法力地址"))
+
+        import threading
+        threading.Thread(target=do_scan, daemon=True).start()
 
     def _on_scan_mp_next(self):
         value = self._get_scan_value(self._mp_entry)
         if value is None:
             return
-        count = self.cheats.scan_mp_next(value)
-        self._mp_count.config(text=f"地址: {count} 个")
-        self._log(f"剩余 {count} 个法力地址")
+        self._log(f"再次扫描法力: {value}")
+
+        def do_scan():
+            count = self.cheats.scan_mp_next(value)
+            self.root.after(0, lambda: self._mp_count.config(text=f"地址: {count} 个"))
+            self.root.after(0, lambda: self._log(f"剩余 {count} 个法力地址"))
+
+        import threading
+        threading.Thread(target=do_scan, daemon=True).start()
 
     def _on_scan_atk_first(self):
         value = self._get_scan_value(self._atk_entry, dtype="int")
         if value is None:
             return
-        count = self.cheats.scan_attack_first(value)
-        self._atk_count.config(text=f"地址: {count} 个")
-        self._log(f"找到 {count} 个攻击力地址")
+        self._log(f"首次扫描攻击: {value}，请稍候...")
+
+        def do_scan():
+            count = self.cheats.scan_attack_first(value)
+            self.root.after(0, lambda: self._atk_count.config(text=f"地址: {count} 个"))
+            self.root.after(0, lambda: self._log(f"找到 {count} 个攻击力地址"))
+
+        import threading
+        threading.Thread(target=do_scan, daemon=True).start()
 
     def _on_scan_atk_next(self):
         value = self._get_scan_value(self._atk_entry, dtype="int")
         if value is None:
             return
-        count = self.cheats.scan_attack_next(value)
-        self._atk_count.config(text=f"地址: {count} 个")
-        self._log(f"剩余 {count} 个攻击力地址")
+        self._log(f"再次扫描攻击: {value}")
+
+        def do_scan():
+            count = self.cheats.scan_attack_next(value)
+            self.root.after(0, lambda: self._atk_count.config(text=f"地址: {count} 个"))
+            self.root.after(0, lambda: self._log(f"剩余 {count} 个攻击力地址"))
+
+        import threading
+        threading.Thread(target=do_scan, daemon=True).start()
 
     def _on_god_mode(self, state: bool):
         try:
