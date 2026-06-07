@@ -7,11 +7,14 @@ core/memory.py - 内存读写核心模块
 
 import struct
 import time
+import logging
 from typing import Optional
 
 import pymem
 import pymem.exception
 import pymem.process
+
+logger = logging.getLogger("zmxy4.memory")
 
 
 class MemoryError(Exception):
@@ -20,6 +23,10 @@ class MemoryError(Exception):
 
 class ProcessNotFoundError(MemoryError):
     """找不到目标游戏进程"""
+
+
+class ProcessAccessError(MemoryError):
+    """无法访问目标进程（权限不足或被保护）"""
 
 
 class ProcessManager:
@@ -31,70 +38,108 @@ class ProcessManager:
     ]
 
     def __init__(self, process_name: Optional[str] = None):
-        """
-        :param process_name: 进程名，为 None 时自动尝试匹配已知进程名
-        """
         self.process_name = process_name
         self.pm: Optional[pymem.Pymem] = None
         self.process_id: Optional[int] = None
 
     def find_process(self) -> bool:
         """
-        自动查找造梦西游4进程。
-        返回 True 表示找到并成功附加，False 表示没找到。
+        扫描进程列表，查找造梦微端。
+        使用 contains 匹配（zmxy_online 匹配 zmxy_online(32位)）。
+        返回 True=找到，False=没找到。
         """
+        import psutil
+
         names_to_try = (
             [self.process_name] if self.process_name
             else self.TARGET_PROCESSES
         )
 
         for name in names_to_try:
-            if "*" in name:
-                # 通配符查找 —— 遍历进程
-                import psutil
-                for proc in psutil.process_iter(["name", "pid"]):
-                    try:
-                        pname = proc.info["name"] or ""
-                        pattern = name.replace("*", "").lower()
-                        if pattern in pname.lower():
-                            self._attach(proc.info["pid"])
-                            self.process_name = pname
-                            return True
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-            else:
+            pattern = name.replace("*", "").lower()
+            for proc in psutil.process_iter(["name", "pid"]):
                 try:
-                    self.pm = pymem.Pymem(name)
-                    self.process_name = name
-                    self.process_id = self.pm.process_id
-                    return True
-                except pymem.exception.ProcessNotFound:
-                    continue
-                except pymem.exception.CouldNotOpenProcess:
+                    pname = (proc.info["name"] or "").lower()
+                    if pattern in pname:
+                        pid = proc.info["pid"]
+                        logger.info(f"找到微端进程: {pname} (PID={pid})")
+                        self._attach(pid)
+                        self.process_name = pname
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
         return False
 
     def _attach(self, pid: int):
-        """通过 PID 附加到进程"""
-        self.pm = pymem.Pymem()
-        # pymem 不直接支持 PID 附加，用内部方法
-        import pymem.process
-        self.pm.process_handle = pymem.process.process_from_id(pid)
-        self.pm.process_id = pid
+        """通过 PID 打开进程句柄"""
+        import ctypes
+        from ctypes import wintypes
+
+        # 获取进程完整路径，用于日志
+        try:
+            import psutil
+            proc = psutil.Process(pid)
+            exe_path = proc.exe()
+            is_32bit = not (proc.exe().lower().endswith("64.exe"))
+            logger.debug(f"进程信息: {exe_path}, 32位={is_32bit}")
+        except Exception:
+            pass
+
+        # 先尝试完全访问权限
+        access_flags = [
+            ("完全访问", 0x1F0FFF),                    # PROCESS_ALL_ACCESS
+            ("查询+读写", 0x0010 | 0x0020 | 0x0008),   # QUERY | VM_READ | VM_WRITE
+            ("最小权限", 0x0010 | 0x0020),              # QUERY | VM_READ
+        ]
+
+        last_error = ""
+        for access_name, access_flag in access_flags:
+            try:
+                handle = ctypes.windll.kernel32.OpenProcess(
+                    access_flag, False, pid
+                )
+                if handle:
+                    self.pm = pymem.Pymem()
+                    self.pm.process_handle = handle
+                    self.pm.process_id = pid
+                    logger.info(f"进程句柄已打开 ({access_name})")
+                    return
+                else:
+                    err = ctypes.windll.kernel32.GetLastError()
+                    last_error = f"{access_name}失败: Windows错误码 {err}"
+                    logger.debug(last_error)
+            except Exception as e:
+                last_error = f"{access_name}异常: {e}"
+                logger.debug(last_error)
+                continue
+
+        raise ProcessAccessError(
+            f"无法打开进程 (PID={pid})。\n"
+            f"最后错误: {last_error}\n\n"
+            "可能的原因:\n"
+            "  1. 请以管理员身份运行本辅助器\n"
+            "     (右键 → 以管理员身份运行)\n"
+            "  2. 杀毒软件拦截了内存访问\n"
+            "  3. 微端有反调试保护"
+        )
 
     def ensure_attached(self) -> None:
         """确保已附加到进程，否则抛出异常"""
-        if not self.pm:
+        if not self.pm or not self.pm.process_handle:
             if not self.find_process():
                 raise ProcessNotFoundError(
-                    f"找不到造梦西游4进程。请先启动游戏。\n"
-                    f"搜索的进程名: {', '.join(self.TARGET_PROCESSES)}"
+                    f"找不到造梦西游4微端进程。请先启动游戏。\n"
+                    f"搜索: zmxy_online"
                 )
 
     def close(self):
         """关闭进程句柄"""
-        if self.pm:
-            self.pm.close_process()
+        if self.pm and self.pm.process_handle:
+            try:
+                from ctypes import windll
+                windll.kernel32.CloseHandle(self.pm.process_handle)
+            except Exception:
+                pass
             self.pm = None
             self.process_id = None
 
@@ -111,17 +156,11 @@ class MemoryScanner:
         self._last_addresses: list[int] = []
 
     def scan_int(self, value: int, first_scan: bool = True) -> list[int]:
-        """
-        扫描 4 字节整数。
-        :param value: 要搜索的值
-        :param first_scan: True=全内存扫描, False=在上次结果中筛选
-        :returns: 匹配的地址列表
-        """
+        """扫描 4 字节整数"""
         self.pm.ensure_attached()
         addresses = []
 
         if first_scan:
-            # 全内存扫描
             for module in self._iter_modules():
                 try:
                     module_start = module.lpBaseOfDll
@@ -132,7 +171,6 @@ class MemoryScanner:
                     continue
             self._last_addresses = addresses
         else:
-            # 在上次结果中筛选
             filtered = []
             for addr in self._last_addresses:
                 try:
@@ -146,7 +184,7 @@ class MemoryScanner:
         return list(self._last_addresses)
 
     def scan_float(self, value: float, first_scan: bool = True) -> list[int]:
-        """扫描 4 字节浮点数（常用于血量/蓝量）"""
+        """扫描 4 字节浮点数"""
         self.pm.ensure_attached()
         if first_scan:
             addresses = []
@@ -173,29 +211,24 @@ class MemoryScanner:
         return list(self._last_addresses)
 
     def read_int(self, address: int) -> int:
-        """从指定地址读 4 字节整数"""
         self.pm.ensure_attached()
         return self.pm.pm.read_int(address)
 
     def read_float(self, address: int) -> float:
-        """从指定地址读 4 字节浮点数"""
         self.pm.ensure_attached()
         return self.pm.pm.read_float(address)
 
     def write_int(self, address: int, value: int):
-        """写 4 字节整数到指定地址"""
         self.pm.ensure_attached()
         self.pm.pm.write_int(address, value)
 
     def write_float(self, address: int, value: float):
-        """写 4 字节浮点数到指定地址"""
         self.pm.ensure_attached()
         self.pm.pm.write_float(address, value)
 
     def _iter_modules(self):
         """遍历进程所有模块"""
-        # 用 pymem 的底层 API 枚举模块
-        from ctypes import create_string_buffer, sizeof
+        from ctypes import sizeof
         from pymem.ressources.structure import MODULEENTRY32
 
         h_module_snapshot = pymem.process.create_toolhelp32_snapshot(
@@ -218,7 +251,6 @@ class MemoryScanner:
 
     @staticmethod
     def _scan_buffer_int(buffer: bytes, base: int, value: int, results: list):
-        """在内存块中搜索 4 字节整数"""
         packed = struct.pack("<i", value)
         pos = 0
         while True:
@@ -226,11 +258,10 @@ class MemoryScanner:
             if pos == -1:
                 break
             results.append(base + pos)
-            pos += 4  # 步进 4 字节
+            pos += 4
 
     @staticmethod
     def _scan_buffer_float(buffer: bytes, base: int, value: float, results: list):
-        """在内存块中搜索 4 字节浮点数"""
         packed = struct.pack("<f", value)
         pos = 0
         while True:
@@ -244,33 +275,27 @@ class MemoryScanner:
 class MemoryFreezer:
     """
     内存值冻结器 —— 后台线程不断将指定地址写回目标值。
-    实现"无限血量"、"无限蓝量"等效果。
     """
 
     def __init__(self, scanner: MemoryScanner):
         self.scanner = scanner
-        self._frozen: dict[int, tuple] = {}   # addr -> (type, value)
+        self._frozen: dict[int, tuple] = {}
         self._running = False
         self._thread = None
 
     def freeze_int(self, address: int, value: int):
-        """锁定一个地址为指定整数值"""
         self._frozen[address] = ("int", value)
 
     def freeze_float(self, address: int, value: float):
-        """锁定一个地址为指定浮点数值"""
         self._frozen[address] = ("float", value)
 
     def unfreeze(self, address: int):
-        """取消锁定"""
         self._frozen.pop(address, None)
 
     def unfreeze_all(self):
-        """取消所有锁定"""
         self._frozen.clear()
 
     def _loop(self):
-        """冻结循环"""
         import threading
         self._running = True
         while self._running:
@@ -282,10 +307,9 @@ class MemoryFreezer:
                         self.scanner.write_float(addr, value)
                 except Exception:
                     continue
-            time.sleep(0.05)  # 每秒写 20 次，确保稳定
+            time.sleep(0.05)
 
     def start(self):
-        """启动冻结线程"""
         if self._running:
             return
         self._running = True
@@ -294,7 +318,6 @@ class MemoryFreezer:
         self._thread.start()
 
     def stop(self):
-        """停止冻结线程"""
         self._running = False
         if self._thread:
             self._thread.join(timeout=1)

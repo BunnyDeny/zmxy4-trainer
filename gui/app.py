@@ -480,12 +480,12 @@ class CheatApp:
         self._log("正在连接游戏进程...")
 
         def do_connect():
-            ok = self.cheats.attach()
-            self.root.after(0, lambda: self._on_connect_result(ok))
+            ok, msg = self.cheats.attach()
+            self.root.after(0, lambda: self._on_connect_result(ok, msg))
 
         threading.Thread(target=do_connect, daemon=True).start()
 
-    def _on_connect_result(self, ok: bool):
+    def _on_connect_result(self, ok: bool, msg: str):
         if ok:
             self._proc_status.config(text="● 已连接", fg=COLORS["success"])
             self._btn_connect.config(text="已连接", state=tk.DISABLED)
@@ -494,10 +494,8 @@ class CheatApp:
                                       fg=COLORS["accent_green"])
             self._log("连接成功！造梦西游4 内存通道已建立")
         else:
-            self._log("连接失败，请检查进程是否还在运行")
-            messagebox.showerror("连接失败",
-                                 "无法连接到游戏进程。\n"
-                                 '请确保游戏正在运行，然后重新点击"查找进程"')
+            self._log(f"连接失败: {msg}")
+            messagebox.showerror("连接失败", msg)
 
     def _on_scan_hp_first(self):
         value = self._get_scan_value(self._hp_entry)

@@ -11,7 +11,7 @@ import time
 from typing import Optional
 
 from core import ProcessManager, MemoryScanner, MemoryFreezer
-from core.memory import ProcessNotFoundError
+from core.memory import ProcessNotFoundError, ProcessAccessError
 
 logger = logging.getLogger("zmxy4.cheats")
 
@@ -52,15 +52,21 @@ class CheatEngine:
     #  进程管理
     # ──────────────────────────────────────
 
-    def attach(self) -> bool:
-        """连接到游戏进程。返回 True=成功"""
+    def attach(self) -> tuple[bool, str]:
+        """连接到游戏进程。返回 (成功?, 消息)"""
         try:
-            found = self.pm.find_process()
-            self._attached = found
-            return found
+            self.pm.find_process()
+            self._attached = True
+            return True, "连接成功！"
+        except ProcessNotFoundError as e:
+            self._attached = False
+            return False, str(e)
+        except ProcessAccessError as e:
+            self._attached = False
+            return False, str(e)
         except Exception as e:
-            logger.error(f"连接失败: {e}")
-            return False
+            self._attached = False
+            return False, f"未知错误: {e}"
 
     def detach(self):
         """断开连接"""
